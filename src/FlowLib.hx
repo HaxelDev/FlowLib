@@ -62,7 +62,7 @@ class FlowLib {
 
     static function update(library:String, url:String, version:String = "latest") {
         init();
-
+    
         var config = getConfig();
         var libraryExists = false;
 
@@ -72,7 +72,7 @@ class FlowLib {
                 break;
             }
         }
-
+    
         if (!libraryExists) {
             Logger.log('Library "$library" is not installed. Use "install" command first.');
             return;
@@ -82,12 +82,18 @@ class FlowLib {
             Logger.log('Git is not installed. Please install Git to use this feature.');
             return;
         }
-
+    
         var libraryPath = flowLibPath + "/" + library + "/" + version;
         if (FileSystem.exists(libraryPath)) {
             var pullCmd = getGitCommand('pull', null, libraryPath);
-            Sys.command(pullCmd, []);
-            Logger.log('Library "$library" updated to version "$version" successfully.');
+            Logger.log("Executing command: " + pullCmd);
+    
+            var result = Sys.command(pullCmd);
+            if (result == 0) {
+                Logger.log('Library "$library" updated to version "$version" successfully.');
+            } else {
+                Logger.log('Failed to update library "$library". Command returned: ' + result);
+            }
         } else {
             Logger.log('Library path does not exist. Please reinstall the library.');
         }
