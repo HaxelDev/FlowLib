@@ -2,12 +2,13 @@ package;
 
 import sys.FileSystem;
 import sys.io.File;
-import haxe.Http;
 import haxe.Json;
 import logs.*;
 
+using StringTools;
+
 class FlowLib {
-    public static var flowLibPath = "C:/FlowLib";
+    public static var flowLibPath = getPlatformSpecificPath();
     public static var configFile = flowLibPath + "/flowlib.json";
 
     static function init() {
@@ -27,7 +28,7 @@ class FlowLib {
 
     static function install(library:String, url:String, version:String = "latest") {
         init();
-        
+    
         var config = getConfig();
         for (lib in (cast config.libraries:Array<Dynamic>)) {
             if (lib.name == library && lib.version == version) {
@@ -36,18 +37,114 @@ class FlowLib {
             }
         }
 
-        var http = new Http(url);
-        http.onData = function(data:String) {
+        if (!isGitAvailable()) {
+            Logger.log('Git is not installed. Please install Git to use this feature.');
+            return;
+        }
+    
+        var libraryPath = flowLibPath + "/" + library + "/" + version;
+        if (!FileSystem.exists(libraryPath)) {
+            FileSystem.createDirectory(libraryPath);
+        }
+    
+        var cloneCmd = getGitCommand('clone', url.replace("\\", "/"), libraryPath);
+        Logger.log("Executing command: " + cloneCmd);
+    
+        var result = Sys.command(cloneCmd);
+        if (result == 0) {
             Logger.log('Library "$library" version "$version" installed successfully from "$url".');
             config.libraries.push({ name: library, version: version });
             saveConfig(config);
-        };
+        } else {
+            Logger.log('Failed to install library "$library". Command returned: ' + result);
+        }
+    }    
+
+    static function update(library:String, url:String, version:String = "latest") {
+        init();
+
+        var config = getConfig();
+        var libraryExists = false;
+
+        for (lib in (cast config.libraries:Array<Dynamic>)) {
+            if (lib.name == library) {
+                libraryExists = true;
+                break;
+            }
+        }
+
+        if (!libraryExists) {
+            Logger.log('Library "$library" is not installed. Use "install" command first.');
+            return;
+        }
+
+        if (!isGitAvailable()) {
+            Logger.log('Git is not installed. Please install Git to use this feature.');
+            return;
+        }
+
+        var libraryPath = flowLibPath + "/" + library + "/" + version;
+        if (FileSystem.exists(libraryPath)) {
+            var pullCmd = getGitCommand('pull', null, libraryPath);
+            Sys.command(pullCmd, []);
+            Logger.log('Library "$library" updated to version "$version" successfully.');
+        } else {
+            Logger.log('Library path does not exist. Please reinstall the library.');
+        }
+    }
+
+    static function getGitCommand(command:String, url:String, libraryPath:String):String {
+        var platform = Sys.systemName().toLowerCase();
+        var cmd:String = '';
     
-        http.onError = function(error:String) {
-            Logger.log('Failed to download library from "$url": $error');
-        };
+        switch (platform) {
+            case "windows":
+                if (command == "clone") {
+                    cmd = 'cmd /c git clone ' + url.replace("\\", "/") + ' "' + libraryPath + '"';
+                } else if (command == "pull") {
+                    cmd = 'cmd /c cd "' + libraryPath + '" && git pull';
+                }
+            default:
+                if (command == "clone") {
+                    cmd = 'git clone ' + url.replace("\\", "/") + ' ' + libraryPath;
+                } else if (command == "pull") {
+                    cmd = 'git -C ' + libraryPath + ' pull';
+                }
+        }
+        return cmd;
+    }
+
+    static function getPlatformSpecificPath():String {
+        var platform = Sys.systemName().toLowerCase();
+        switch (platform) {
+            case "windows":
+                return "C:/FlowLib";
+            case "linux":
+                return "/usr/local/FlowLib";
+            case "macos":
+                return "/usr/local/FlowLib";
+            default:
+                throw "Unsupported platform: " + platform;
+        }
+    }
+
+    static function isGitAvailable():Bool {
+        var platform = Sys.systemName().toLowerCase();
+        var cmd:String;
+        
+        if (platform == "windows") {
+            cmd = "where git";
+        } else {
+            cmd = "which git";
+        }
     
-        http.request();
+        try {
+            var gitCheckCmd = Sys.command(cmd);
+            return gitCheckCmd == 0;
+        } catch (e:Dynamic) {
+            Logger.log('Git is not installed or not found in PATH: ' + e);
+            return false;
+        }
     }
 
     static function listLibraries() {
@@ -90,43 +187,6 @@ class FlowLib {
             Logger.log('Library "$library" with version "${version != null ? version : "any"}" is not installed.');
         }
     }
-
-    static function update(library:String, url:String, version:String = "latest") {
-        init();
-
-        var config = getConfig();
-        var libraryExists = false;
-
-        for (lib in (cast config.libraries:Array<Dynamic>)) {
-            if (lib.name == library) {
-                libraryExists = true;
-                break;
-            }
-        }
-
-        if (!libraryExists) {
-            Logger.log('Library "$library" is not installed. Use "install" command first.');
-            return;
-        }
-
-        var http = new Http(url);
-        http.onData = function(data:String) {
-            for (lib in (cast config.libraries:Array<Dynamic>)) {
-                if (lib.name == library) {
-                    lib.version = version;
-                    Logger.log('Library "$library" updated to version "$version" successfully from "$url".');
-                    break;
-                }
-            }
-            saveConfig(config);
-        };
-
-        http.onError = function(error:String) {
-            Logger.log('Failed to download library from "$url": $error');
-        };
-
-        http.request();
-    }    
 
     static function getConfig():Dynamic {
         var jsonData = File.getContent(configFile);
