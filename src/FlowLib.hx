@@ -194,6 +194,44 @@ class FlowLib {
         }
     }
 
+    static function create(library:String, version:String = "1.0.0", description:String = "A new Flow library") {
+        init();
+
+        var config = getConfig();
+        var libraryPath = flowLibPath + "/" + library + "/" + version;
+
+        if (!FileSystem.exists(libraryPath)) {
+            FileSystem.createDirectory(libraryPath);
+            Logger.log("Created library directory: " + libraryPath);
+        } else {
+            Logger.log('Library "$library" version "$version" already exists.');
+            return;
+        }
+
+        var srcPath = libraryPath + "/src";
+        FileSystem.createDirectory(srcPath);
+        Logger.log("Created src directory: " + srcPath);
+
+        var mainFlowPath = srcPath + "/main.flow";
+        var mainFlowContent = "// Main entry point for the " + library + " library\n";
+        File.saveContent(mainFlowPath, mainFlowContent);
+        Logger.log("Created main.flow file: " + mainFlowPath);
+
+        var libraryConfig = {
+            name: library,
+            version: version,
+            description: description,
+            src: "src"
+        };
+
+        var jsonData = Json.stringify(libraryConfig, null, "  ");
+        var configFilePath = libraryPath + "/library.json";
+
+        File.saveContent(configFilePath, jsonData);
+        config.libraries.push({ name: library, version: version });
+        Logger.log("Created library configuration file: " + configFilePath);
+    }
+
     static function getConfig():Dynamic {
         var jsonData = File.getContent(configFile);
         return Json.parse(jsonData);
@@ -217,6 +255,12 @@ class FlowLib {
         var version = args.length > 3 ? args[3] : "latest";
 
         switch (command) {
+            case "create":
+                if (param != null) {
+                    create(param, version);
+                } else {
+                    Logger.log("Please specify a library name to create.");
+                }
             case "install":
                 if (param != null && url != null) {
                     install(param, url, version);
@@ -249,5 +293,6 @@ class FlowLib {
         Logger.log('       flowlib list');
         Logger.log('       flowlib remove [library] [version]');
         Logger.log('       flowlib update [library] [url] [version]');
+        Logger.log('       flowlib create [library] [version] [description]');
     }
 }
